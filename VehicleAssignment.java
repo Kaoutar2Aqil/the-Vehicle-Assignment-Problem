@@ -12,6 +12,7 @@ public class VehicleAssignment {
     private int[] capacities;       // Capacités des véhicules
     private IloCplex model;         // Modèle CPLEX
     private IloNumVar[][] x;        // Variables de décision pour l'affectation
+    private IloNumVar[] y;          // Variables pour les véhicules utilisés
 
     // Constructeur qui initialise les paramètres du problème
     public VehicleAssignment(int numPassengers, int numVehicles, int[] capacities) throws IloException {
@@ -21,6 +22,7 @@ public class VehicleAssignment {
         model = new IloCplex();
         
         x = new IloNumVar[numPassengers][];
+        y = new IloNumVar[numVehicles];
         for (int i = 0; i < numPassengers; i++) {
             x[i] = new IloNumVar[numVehicles];
         }
@@ -28,7 +30,7 @@ public class VehicleAssignment {
         createModel();
     }
 
-    // Création du modèle de programmation linéaire en nombre entier
+    // Création du modèle de programmation linéaire
     private void createModel() throws IloException {
         createVariables();
         createConstraints();
@@ -40,14 +42,7 @@ public class VehicleAssignment {
         IloLinearNumExpr objective = model.linearNumExpr();
         // Minimiser le nombre total de véhicules utilisés
         for (int j = 0; j < numVehicles; j++) {
-            IloLinearNumExpr vehicleLoad = model.linearNumExpr();
-            for (int i = 0; i < numPassengers; i++) {
-                vehicleLoad.addTerm(1, x[i][j]);
-            }
-            // Si un véhicule a au moins un passager, il est utilisé
-            IloNumVar vehicleUsed = model.boolVar("vehicleUsed_" + j);
-            model.addEq(vehicleUsed, vehicleLoad);
-            objective.addTerm(1, vehicleUsed);
+            objective.addTerm(1, y[j]);
         }
         model.addMinimize(objective);
     }
@@ -56,6 +51,11 @@ public class VehicleAssignment {
     private void createVariables() throws IloException {
         for (int i = 0; i < numPassengers; i++) {
             x[i] = model.boolVarArray(numVehicles); // x[i][j] == 1 si passager i est affecté au véhicule j
+        }
+
+        // Variables binaires pour savoir si un véhicule est utilisé
+        for (int j = 0; j < numVehicles; j++) {
+            y[j] = model.boolVar("y_" + j);
         }
     }
 
@@ -67,7 +67,7 @@ public class VehicleAssignment {
             for (int j = 0; j < numVehicles; j++) {
                 passengerConstraint.addTerm(1, x[i][j]);
             }
-            model.addEq(passengerConstraint, 1);
+            model.addEq(passengerConstraint, 1); // Chaque passager doit être affecté à 1 véhicule
         }
 
         // Contrainte sur la capacité des véhicules
@@ -76,7 +76,16 @@ public class VehicleAssignment {
             for (int i = 0; i < numPassengers; i++) {
                 vehicleCapacity.addTerm(1, x[i][j]);
             }
-            model.addLe(vehicleCapacity, capacities[j]);
+            model.addLe(vehicleCapacity, capacities[j]); // Ne pas dépasser la capacité des véhicules
+        }
+
+        // Contrainte pour que la variable y[j] soit 1 si le véhicule j est utilisé
+        for (int j = 0; j < numVehicles; j++) {
+            IloLinearNumExpr vehicleUsed = model.linearNumExpr();
+            for (int i = 0; i < numPassengers; i++) {
+                vehicleUsed.addTerm(1, x[i][j]);
+            }
+            model.addGe(vehicleUsed, y[j]); // Si un véhicule a au moins un passager, il est utilisé
         }
     }
 
@@ -98,9 +107,9 @@ public class VehicleAssignment {
 
     // Programme principal pour tester le modèle
     public static void main(String[] args) throws IloException {
-        int numPassengers = 2;  // Réduit pour tester un petit cas
-        int numVehicles = 2;    // Nombre réduit de véhicules
-        int[] capacities = {2, 2}; // Capacités ajustées des véhicules
+        int numPassengers = 4;  // Exemple avec 4 passagers
+        int numVehicles = 2;    // 2 véhicules
+        int[] capacities = {3, 3}; // Les véhicules ont une capacité de 3 passagers chacun
         
         VehicleAssignment vehicleAssignment = new VehicleAssignment(numPassengers, numVehicles, capacities);
         vehicleAssignment.solveProblem();
